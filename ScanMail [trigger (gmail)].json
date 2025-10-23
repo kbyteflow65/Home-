@@ -1,0 +1,315 @@
+{
+  "name": "ScanMail [trigger (gmail)]",
+  "nodes": [
+    {
+      "parameters": {
+        "fromEmail": "kbyte.flow@gmail.com",
+        "toEmail": "kbyte.flow@gmail.com",
+        "subject": "Blacklisted Word Detected ",
+        "emailFormat": "text",
+        "text": "=One or more blacklisted words were detected in the email from {{ $('Check blacklisted words').item.json.from }} with the subject {{ $json.subject }}.\nMatched words:\n\n{{ $json.matchedWords[0] }}\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        736,
+        160
+      ],
+      "id": "7de674c0-a94f-4300-b016-ab6a6f12dd07",
+      "name": "Send Alert Email",
+      "webhookId": "c8e83743-eb97-4eee-81f9-dd69cdf6b60b",
+      "credentials": {
+        "smtp": {
+          "id": "3QcjYhFgZ8s8MIrn",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3ad3de04-0b0c-4387-93b4-1d7e73c0f04a",
+              "leftValue": "={{ $json.matchFound }}",
+              "rightValue": "'true'",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        400,
+        176
+      ],
+      "id": "88e5b900-fd67-41a8-9314-c82dc605c973",
+      "name": "[IF: matchFound = true]"
+    },
+    {
+      "parameters": {
+        "downloadAttachments": true,
+        "dataPropertyAttachmentsPrefixName": "file",
+        "options": {
+          "customEmailConfig": "[\"UNSEEN\"]",
+          "trackLastMessageId": true
+        }
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.1,
+      "position": [
+        -1104,
+        176
+      ],
+      "id": "14221878-a31d-44c7-a74c-23f396c711e9",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "efRZj9tDRD89dRKB",
+          "name": "IMAP account [gmail]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Add a new field called 'myNewField' to the JSON of the item\n$input.item.json.myNewField = 1;\n\nreturn $input.item;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        432
+      ],
+      "id": "610f0090-fa2a-4d6c-91d2-0f20b7a69ada",
+      "name": "Do nothing ?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ocr.space/parse/image",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"apikey\": \"K82632760088957\",\n  \"language\": \"fre\", \n  \"isOverlayRequired\": false\n}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file0",
+              "inputDataFieldName": "file0"
+            },
+            {
+              "name": "base64image",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {}
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -720,
+        -64
+      ],
+      "id": "25714d84-6b48-488b-84e7-20d7a7698441",
+      "name": "HTTP Request ocr.space",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "text = _input.all()[0].json.ParsedResults[0].ParsedText\nreturn [{\"json\": {\"parsed_text\": text}}]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -64
+      ],
+      "id": "6cf3982d-3207-4246-9309-88ec0fcad719",
+      "name": "Get parsed text [image]",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "from_ = _input.all()[0].json.from_\ndate = _input.all()[0].json.date\nsubject = _input.all()[0].json.subject\nbody = _input.all()[0].json.textPlain\n\nreturn [{\"json\": {\"from\": from_,\n                  \"date\": date,\n                  \"subject\": subject, \n                  \"body\": body}}]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        464
+      ],
+      "id": "40c4858c-e291-41f9-b2de-95e6d9202564",
+      "name": "Get mail content [body]"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "\n# Blacklist\nblacklist = [\n    \"PP95541087\",\n    \"T735377677\",\n    \"JN8838788\",\n    \"ER8976563\"\n]\n\n# Get the extracted text from previous node\n#parsed_text = _input.first().json.parsed_text\ninput_items = _input.all()\nparsed_text = input_items[0].json.parsed_text\nbody = input_items[1].json.body\n\n\ntext_to_process = body + \" \" + parsed_text\n\n# Find matching words\nfound = [word for word in blacklist if word.lower() in text_to_process.lower()]\n\n# Output result\nfrom_ = input_items[1].json.from_\nsubject = input_items[1].json.subject\n\noutput = {\n  \"matchFound\": len(found) > 0,\n  \"matchedWords\": found,\n  \"from\": from_,\n  \"subject\": subject,\n}\n\nreturn output\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        176
+      ],
+      "id": "4218f113-d715-4372-b15c-1f49cb1c1d2f",
+      "name": "Check blacklisted words"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -48,
+        176
+      ],
+      "id": "0862b851-90d6-41d3-973c-b91c922890b0",
+      "name": "Merge",
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "[IF: matchFound = true]": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Do nothing ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request ocr.space",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get mail content [body]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request ocr.space": {
+      "main": [
+        [
+          {
+            "node": "Get parsed text [image]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get parsed text [image]": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get mail content [body]": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Check blacklisted words": {
+      "main": [
+        [
+          {
+            "node": "[IF: matchFound = true]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Check blacklisted words",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "24235a10-a011-4b84-b662-cec26da010c1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cd697f23d51693293bc2ad64e0a9ed908ac27fc4e8a1d1b3176dc7fca402e951"
+  },
+  "id": "qN5c5Cktf86P7NS9",
+  "tags": [
+    {
+      "createdAt": "2025-10-22T08:36:53.873Z",
+      "updatedAt": "2025-10-22T08:36:53.873Z",
+      "id": "KKd7FRth2eYX0oYK",
+      "name": "outlook"
+    },
+    {
+      "createdAt": "2025-10-22T08:36:53.841Z",
+      "updatedAt": "2025-10-22T08:36:53.841Z",
+      "id": "vfcQL8VcnmBthNLH",
+      "name": "scan mail"
+    }
+  ]
+}
